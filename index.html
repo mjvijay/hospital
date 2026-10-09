@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MediTrail – Patient History Retrieval</title>
+<style>
+:root{--bg:#f4f7fb;--card:#fff;--tx:#1b2733;--mu:#667585;--pr:#0b7285;--bd:#dde5ee;--ok:#2f9e44;--wa:#e8590c;--bl:#1971c2;--pu:#7048e8}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--tx)}
+header{background:var(--pr);color:#fff;padding:12px 20px;display:flex;justify-content:space-between;align-items:center}
+header b{font-size:18px}main{max-width:1050px;margin:20px auto;padding:0 14px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:16px}
+h2{margin:0 0 10px;font-size:17px}input,select,textarea,button{font:inherit}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--bd);border-radius:8px;margin:4px 0 10px}
+button{background:var(--pr);color:#fff;border:0;border-radius:8px;padding:9px 14px;cursor:pointer}
+button.alt{background:#fff;color:var(--pr);border:1px solid var(--pr)}button.sm{padding:4px 9px;font-size:13px}
+.login{max-width:400px;margin:60px auto}.tabs{display:flex;gap:8px;margin-bottom:12px}.tabs button{flex:1}
+.row{display:flex;gap:8px}.row input{margin:0}.hint{color:var(--mu);font-size:13px}
+.tl{border-left:3px solid var(--bd);margin-left:8px;padding-left:18px}
+.ev{position:relative;margin-bottom:14px}.ev:before{content:"";position:absolute;left:-26px;top:4px;width:12px;height:12px;border-radius:50%;background:var(--c,#999)}
+.tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;color:#fff;background:var(--c,#999);margin-right:6px;text-transform:uppercase}
+.pend{background:#fff4e6;color:var(--wa);padding:1px 7px;border-radius:8px;font-size:12px}
+a.src{color:var(--bl);cursor:pointer;font-size:13px;text-decoration:underline}
+.sum li{margin-bottom:6px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:800px){.grid{grid-template-columns:1fr}}
+.modal{position:fixed;inset:0;background:#0007;display:flex;align-items:center;justify-content:center;padding:14px}
+.modal>div{background:#fff;border-radius:12px;max-width:640px;width:100%;padding:20px;max-height:85vh;overflow:auto}
+pre{white-space:pre-wrap;font-family:inherit;background:#f8fafc;padding:12px;border-radius:8px;border:1px solid var(--bd)}
+.note{background:#e7f5ff;border-radius:8px;padding:8px 12px;font-size:13px;margin:8px 0}.hl{background:#fff3bf}
+</style></head><body>
+<header><b>🩺 MediTrail</b><span id="who"></span></header>
+<main id="app"></main>
+<script>
+// ---------- DATA (fictional demo records) ----------
+const USERS=[
+ {u:"dr.rao",p:"doctor123",role:"doctor",name:"Dr. Meera Rao"},
+ {u:"priya",p:"patient123",role:"patient",name:"Priya Nair",pid:"P1"},
+ {u:"arun",p:"patient123",role:"patient",name:"Arun Kumar",pid:"P2"}];
+const PATIENTS={
+P1:{id:"P1",name:"Priya Nair",age:34,sex:"F",
+ docs:{
+  d1:{t:"Gynaecology consultation note",d:"2026-03-04",x:"Complaint: irregular periods for 8 months.\nLast two cycles: 47 days and 44 days. Flow: moderate. No pain.\nOrdered: pelvic ultrasound, hormone panel (LH, FSH, TSH, prolactin)."},
+  d2:{t:"Pelvic ultrasound report",d:"2026-03-10",x:"Both ovaries show multiple small peripheral follicles. Uterus normal in size. Endometrial thickness 7 mm. No free fluid."},
+  d3:{t:"Follow-up consultation note",d:"2026-04-15",x:"Cycle lengths since last visit: 41 and 38 days.\nBMI 27.4. Started Metformin 500 mg twice daily with meals.\nHormone panel result still awaited from lab."},
+  d4:{t:"Follow-up consultation note",d:"2026-06-20",x:"Cycle lengths: 36 and 35 days. Tolerating Metformin, mild nausea in first weeks, now resolved.\nOrdered fasting glucose and HbA1c."},
+  d5:{t:"Fasting glucose & HbA1c report",d:"2026-06-22",x:"Fasting glucose: 94 mg/dL. HbA1c: 5.5 %."},
+  d6:{t:"Procedure note – endometrial sampling",d:"2026-07-02",x:"Outpatient endometrial sampling performed under local anaesthesia. Sample sent for histopathology. No immediate complications."},
+  d7:{t:"Follow-up consultation note",d:"2026-08-10",x:"Cycle lengths: 33 and 34 days. Histopathology report awaited. Continue Metformin 500 mg twice daily. Review in 10 weeks."}},
+ ev:[
+  {d:"2026-03-04",k:"visit",t:"First gynaecology consultation",s:"Irregular cycles (47, 44 days)",doc:"d1"},
+  {d:"2026-03-10",k:"test",t:"Pelvic ultrasound",s:"Multiple small peripheral follicles",st:"done",doc:"d2"},
+  {d:"2026-03-12",k:"test",t:"Hormone panel (LH, FSH, TSH, prolactin)",s:"Result not yet in record",st:"pending",doc:"d3"},
+  {d:"2026-04-15",k:"visit",t:"Follow-up visit",s:"Cycles 41, 38 days",doc:"d3"},
+  {d:"2026-04-15",k:"med",t:"Metformin 500 mg twice daily",s:"Started",st:"active",doc:"d3"},
+  {d:"2026-06-20",k:"visit",t:"Follow-up visit",s:"Cycles 36, 35 days",doc:"d4"},
+  {d:"2026-06-22",k:"test",t:"Fasting glucose & HbA1c",s:"94 mg/dL, 5.5 %",st:"done",doc:"d5"},
+  {d:"2026-07-02",k:"proc",t:"Endometrial sampling",s:"Outpatient, no immediate complications",doc:"d6"},
+  {d:"2026-07-05",k:"test",t:"Endometrial histopathology",s:"Result not yet in record",st:"pending",doc:"d6"},
+  {d:"2026-08-10",k:"visit",t:"Follow-up visit",s:"Cycles 33, 34 days",doc:"d7"},
+  {d:"2026-10-19",k:"fu",t:"Scheduled review",s:"10-week review",st:"scheduled",doc:"d7"}]},
+P2:{id:"P2",name:"Arun Kumar",age:58,sex:"M",
+ docs:{
+  e1:{t:"Medicine OPD note",d:"2026-01-12",x:"Known type 2 diabetes for 9 years. Fasting glucose 168 mg/dL, BP 152/94.\nOrdered HbA1c, lipid profile, kidney function tests."},
+  e2:{t:"Lab report – HbA1c, lipids, kidney function",d:"2026-01-15",x:"HbA1c 8.4 %. LDL 138 mg/dL. Creatinine 1.0 mg/dL. Urine albumin normal."},
+  e3:{t:"Medicine OPD follow-up",d:"2026-03-20",x:"Medications: Metformin 1000 mg twice daily, Glimepiride 2 mg once daily, Amlodipine 5 mg once daily.\nBP 138/88. Eye screening referral given."},
+  e4:{t:"Ophthalmology report",d:"2026-04-02",x:"Fundus examination: no diabetic retinopathy in either eye."},
+  e5:{t:"Cardiology consultation",d:"2026-06-05",x:"Complaint: exertional breathlessness. ECG: normal sinus rhythm. Echocardiogram and treadmill test ordered."},
+  e6:{t:"Echocardiogram report",d:"2026-06-12",x:"Ejection fraction 58 %. Mild left ventricular hypertrophy. No wall motion abnormality."},
+  e7:{t:"Medicine OPD follow-up",d:"2026-09-18",x:"HbA1c 7.6 %. BP 134/84. Treadmill test result awaited. Atorvastatin 20 mg once daily added after lipid review."}},
+ ev:[
+  {d:"2026-01-12",k:"visit",t:"Diabetes & BP review",s:"FBS 168, BP 152/94",doc:"e1"},
+  {d:"2026-01-15",k:"test",t:"HbA1c, lipids, kidney function",s:"HbA1c 8.4 %, LDL 138",st:"done",doc:"e2"},
+  {d:"2026-03-20",k:"visit",t:"Follow-up visit",s:"BP 138/88",doc:"e3"},
+  {d:"2026-03-20",k:"med",t:"Metformin 1000 mg twice daily",s:"Ongoing",st:"active",doc:"e3"},
+  {d:"2026-03-20",k:"med",t:"Glimepiride 2 mg once daily",s:"Ongoing",st:"active",doc:"e3"},
+  {d:"2026-03-20",k:"med",t:"Amlodipine 5 mg once daily",s:"Ongoing",st:"active",doc:"e3"},
+  {d:"2026-04-02",k:"test",t:"Eye (fundus) examination",s:"No retinopathy",st:"done",doc:"e4"},
+  {d:"2026-06-05",k:"visit",t:"Cardiology consultation",s:"Exertional breathlessness",doc:"e5"},
+  {d:"2026-06-12",k:"test",t:"Echocardiogram",s:"EF 58 %, mild LVH",st:"done",doc:"e6"},
+  {d:"2026-06-14",k:"test",t:"Treadmill test",s:"Result not yet in record",st:"pending",doc:"e7"},
+  {d:"2026-09-18",k:"visit",t:"Follow-up visit",s:"HbA1c 7.6 %, BP 134/84",doc:"e7"},
+  {d:"2026-09-18",k:"med",t:"Atorvastatin 20 mg once daily",s:"Added",st:"active",doc:"e7"},
+  {d:"2026-11-20",k:"fu",t:"Scheduled review",s:"2-month review",st:"scheduled",doc:"e7"}]}};
+const KIND={visit:["Visit","#1971c2"],test:["Test","#7048e8"],proc:["Procedure","#e8590c"],med:["Medication","#2f9e44"],fu:["Follow-up","#d6336c"]};
+
+// ---------- STATE ----------
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const load=(k,f)=>{try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}};
+let me=load("me",null), role="patient", pid=null, hits=null;
+const extra=()=>load("extra",{});            // follow-ups added by doctor / notes added by patients
+const events=id=>[...PATIENTS[id].ev,...(extra()[id]||[])].sort((a,b)=>b.d.localeCompare(a.d));
+const fmt=d=>new Date(d).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"});
+const NUM={one:1,two:2,three:3,four:4,five:5};
+
+// ---------- LOGIN ----------
+function loginView(){
+ $("#who").innerHTML="";
+ $("#app").innerHTML=`<div class="card login"><h2>Sign in</h2>
+ <div class="tabs"><button id="tp" class="${role=="patient"?"":"alt"}">Patient</button><button id="td" class="${role=="doctor"?"":"alt"}">Doctor</button></div>
+ <label>Username</label><input id="u" name="mt-user" autocomplete="off" autofocus><label>Password</label><input id="p" name="mt-pass" type="text" autocomplete="off" style="-webkit-text-security:disc"><button class="alt sm" id="demo" type="button" style="margin-bottom:10px">Fill demo ${role} login</button>
+ <button id="go" style="width:100%">Login as ${role}</button><p id="err" style="color:#c92a2a"></p>
+ <p class="hint">Demo logins – Doctor: <b>dr.rao / doctor123</b><br>Patients: <b>priya / patient123</b>, <b>arun / patient123</b></p></div>`;
+ $("#tp").onclick=()=>{role="patient";loginView()};$("#td").onclick=()=>{role="doctor";loginView()};
+ const go=()=>{const x=USERS.find(a=>a.u==$("#u").value.trim().toLowerCase()&&a.p==$("#p").value&&a.role==role);
+  if(!x){$("#err").textContent="Invalid credentials for this role.";return}
+  me=x;localStorage.setItem("me",JSON.stringify(x));pid=x.pid||"P1";hits=null;route()};
+ $("#demo").onclick=()=>{const x=USERS.find(a=>a.role==role);$("#u").value=x.u;$("#p").value=x.p};$("#go").onclick=go;$("#p").onkeydown=e=>e.key=="Enter"&&go();
+}
+function logout(){localStorage.removeItem("me");me=null;loginView()}
+function route(){
+ if(!me)return loginView();
+ $("#who").innerHTML=`${esc(me.name)} (${me.role}) <button class="alt sm" onclick="logout()">Logout</button>`;
+ me.role=="doctor"?doctorView():patientView();
+}
+
+// ---------- SHARED WIDGETS ----------
+function timeline(list){
+ return `<div class="tl">${list.map(e=>`<div class="ev" style="--c:${KIND[e.k][1]}">
+ <span class="tag" style="--c:${KIND[e.k][1]}">${KIND[e.k][0]}</span><b>${esc(e.t)}</b>
+ ${e.st=="pending"?'<span class="pend">⏳ pending</span>':e.st=="scheduled"?'<span class="pend">📅 scheduled</span>':""}
+ <div class="hint">${fmt(e.d)} · ${esc(e.s)} ${e.doc?`· <a class="src" onclick="openDoc('${e.doc}')">source ↗</a>`:""}${e.note?" · added by "+esc(e.by):""}</div></div>`).join("")}</div>`;
+}
+function openDoc(id,q){
+ const p=PATIENTS[pid],d=p.docs[id];let x=esc(d.x);
+ $("#app").insertAdjacentHTML("beforeend",`<div class="modal" onclick="if(event.target==this)this.remove()"><div>
+ <h2>${esc(d.t)}</h2><div class="hint">${esc(p.name)} · ${fmt(d.d)} · Document ID ${id}</div><pre>${x}</pre>
+ <button onclick="this.closest('.modal').remove()">Close</button></div></div>`);
+}
+function summary(id){
+ const E=events(id),P=PATIENTS[id],L=[];
+ const link=e=>e.doc?` <a class="src" onclick="openDoc('${e.doc}')">[${e.doc}]</a>`:"";
+ const visits=E.filter(e=>e.k=="visit"),pend=E.filter(e=>e.st=="pending"),meds=E.filter(e=>e.k=="med"&&e.st=="active"),fu=E.filter(e=>e.st=="scheduled");
+ L.push(`<li>${esc(P.name)}, ${P.age} y ${P.sex}. ${visits.length} visits on record; first ${fmt(visits.at(-1).d)}, latest ${fmt(visits[0].d)}.${link(visits[0])}</li>`);
+ L.push(`<li><b>Latest visit:</b> ${esc(visits[0].s)}.${link(visits[0])}</li>`);
+ if(meds.length)L.push(`<li><b>Medications on record:</b> ${meds.map(m=>esc(m.t)+link(m)).join("; ")}</li>`);
+ L.push(`<li><b>Procedures:</b> ${E.filter(e=>e.k=="proc").map(m=>esc(m.t)+" ("+fmt(m.d)+")"+link(m)).join("; ")||"none recorded"}</li>`);
+ L.push(`<li><b>Reports pending:</b> ${pend.map(m=>esc(m.t)+" (ordered "+fmt(m.d)+")"+link(m)).join("; ")||"none"}</li>`);
+ L.push(`<li><b>Scheduled follow-up:</b> ${fu.map(m=>esc(m.t)+" on "+fmt(m.d)+link(m)).join("; ")||"none"}</li>`);
+ return `<ul class="sum">${L.join("")}</ul><div class="note">Summary only restates what is in the record. It gives no diagnosis or advice. Click any [id] to verify at source.</div>`;
+}
+
+// ---------- SEARCH (plain-English, rule based, works offline) ----------
+function answer(id,q){
+ const s=q.toLowerCase(),E=events(id);let r=E,title="Matches";
+ const n=(s.match(/last\s+(\w+)/)||[])[1],cnt=NUM[n]||parseInt(n)||0;
+ if(/pending|await|not yet|outstanding/.test(s)){r=E.filter(e=>e.st=="pending");title="Pending reports"}
+ else if(/medic|drug|tablet|prescri/.test(s)){r=E.filter(e=>e.k=="med");title="Medications"}
+ else if(/procedure|surg|biops|sampling/.test(s)){r=E.filter(e=>e.k=="proc");title="Procedures"}
+ else if(/follow|review|next appointment|scheduled/.test(s)){r=E.filter(e=>e.k=="fu"||e.k=="visit");title="Visits & follow-ups"}
+ else if(/visit|consult|cycle|period/.test(s)){r=E.filter(e=>e.k=="visit");title=cnt?`Last ${cnt} visits`:"Visits"}
+ else if(/report|test|lab|scan|result|ultra|echo/.test(s)){r=E.filter(e=>e.k=="test");title="Tests & reports"}
+ else{const w=s.split(/\W+/).filter(x=>x.length>2);r=E.filter(e=>{const t=(e.t+" "+e.s+" "+(PATIENTS[id].docs[e.doc]?.x||"")).toLowerCase();return w.some(x=>t.includes(x))})}
+ if(cnt&&/visit|consult|cycle|period|last/.test(s)&&!/pending/.test(s))r=r.slice(0,cnt);
+ // "and which reports are pending" compound question
+ let extraBlock="";
+ if(/pending/.test(s)&&!/^.{0,20}pending/.test(s)&&/(cycle|visit|consult)/.test(s)){
+  const v=E.filter(e=>e.k=="visit").slice(0,cnt||2);
+  extraBlock=`<h2>Last ${v.length} visits</h2>${timeline(v)}`;
+ }
+ return `<h2>${title} (${r.length})</h2>${r.length?timeline(r):"<p class='hint'>Nothing in the record matches.</p>"}${extraBlock}`;
+}
+function voice(inp,go){
+ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+ if(!SR)return alert("Voice input needs Chrome or Edge.");
+ const r=new SR();r.lang="en-IN";r.onresult=e=>{inp.value=e.results[0][0].transcript;go()};r.start();
+}
+
+// ---------- DOCTOR ----------
+function doctorView(){
+ const p=PATIENTS[pid];
+ $("#app").innerHTML=`<div class="card"><h2>Patient lookup</h2><div class="row">
+ <input id="ps" list="pl" placeholder="Type patient name or ID…" value="${esc(p.name)}"><datalist id="pl">${Object.values(PATIENTS).map(x=>`<option value="${x.name}">`).join("")}</datalist>
+ <button id="pb">Open</button></div></div>
+ <div class="card"><h2>Ask about ${esc(p.name)}</h2><div class="row"><input id="q" placeholder="e.g. what were her last two cycles and which reports are still pending?"><button id="qb">Ask</button><button class="alt" id="vb">🎤</button></div>
+ <div id="ans" style="margin-top:12px">${hits||""}</div></div>
+ <div class="grid"><div class="card"><h2>Record summary</h2>${summary(pid)}</div>
+ <div class="card"><h2>Follow-ups & pending</h2>${timeline(events(pid).filter(e=>e.st=="pending"||e.st=="scheduled"||e.note))}
+ <hr><b>Add follow-up</b><input id="ft" placeholder="Follow-up title"><input id="fd" type="date"><button id="fb" class="sm">Add</button></div></div>
+ <div class="card"><h2>Full timeline (${p.name}, ${events(pid).length} events)</h2>${timeline(events(pid))}</div>
+ <div class="card"><h2>Source documents</h2>${Object.entries(p.docs).map(([i,d])=>`<div>📄 <a class="src" onclick="openDoc('${i}')">${esc(d.t)}</a> <span class="hint">${fmt(d.d)}</span></div>`).join("")}</div>`;
+ const open=()=>{const v=$("#ps").value.toLowerCase();const f=Object.values(PATIENTS).find(x=>x.name.toLowerCase().includes(v)||x.id.toLowerCase()==v);if(f){pid=f.id;hits=null;doctorView()}else alert("Patient not found")};
+ $("#pb").onclick=open;$("#ps").onkeydown=e=>e.key=="Enter"&&open();
+ const ask=()=>{if(!$("#q").value.trim())return;hits=answer(pid,$("#q").value);$("#ans").innerHTML=hits};
+ $("#qb").onclick=ask;$("#q").onkeydown=e=>e.key=="Enter"&&ask();$("#vb").onclick=()=>voice($("#q"),ask);
+ $("#fb").onclick=()=>{if(!$("#ft").value||!$("#fd").value)return;const x=extra();(x[pid]=x[pid]||[]).push({d:$("#fd").value,k:"fu",t:$("#ft").value,s:"Added by doctor",st:"scheduled",note:1,by:me.name});localStorage.setItem("extra",JSON.stringify(x));doctorView()};
+}
+
+// ---------- PATIENT ----------
+function patientView(){
+ const p=PATIENTS[pid];
+ $("#app").innerHTML=`<div class="card"><h2>Welcome, ${esc(p.name)}</h2><p class="hint">This is your complete record. Your doctor sees the same history, follow-ups and any notes you add here.</p></div>
+ <div class="grid"><div class="card"><h2>My summary</h2>${summary(pid)}</div>
+ <div class="card"><h2>Send a note to my doctor</h2><textarea id="nt" rows="3" placeholder="New symptoms, questions, or a follow-up request…"></textarea><input id="nd" type="date"><button id="nb">Send</button></div></div>
+ <div class="card"><h2>My timeline</h2>${timeline(events(pid))}</div>
+ <div class="card"><h2>My documents</h2>${Object.entries(p.docs).map(([i,d])=>`<div>📄 <a class="src" onclick="openDoc('${i}')">${esc(d.t)}</a> <span class="hint">${fmt(d.d)}</span></div>`).join("")}</div>`;
+ $("#nb").onclick=()=>{if(!$("#nt").value.trim())return;const x=extra();(x[pid]=x[pid]||[]).push({d:$("#nd").value||new Date().toISOString().slice(0,10),k:"fu",t:"Patient note: "+$("#nt").value.trim(),s:"Patient request",st:"pending",note:1,by:p.name});localStorage.setItem("extra",JSON.stringify(x));patientView()};
+}
+route();
+</script></body></html>
